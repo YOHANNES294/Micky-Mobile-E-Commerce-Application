@@ -1,5 +1,5 @@
 class AppConstants {
-  static const String appName = 'Micky Mobile';
+  static const String appName = 'Micky-Mobile';
   static const String appTagline = "Ethiopia's Trusted Phone Store";
   static const String shopAddress = 'Bole Alemnesh Plaza Ground Floor';
   static const String shopPhone = '+251 93 369 4796';

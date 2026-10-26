@@ -74,7 +74,7 @@ class MickyMobileApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Micky Mobile Ethiopia',
+      title: 'Micky-Mobile',
       theme: AppTheme.lightTheme,
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       routerConfig: appRouter,
