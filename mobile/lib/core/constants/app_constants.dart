@@ -9,5 +9,6 @@ class AppConstants {
   static const String supabaseAnonKey = 'sb_publishable_QMQhGKD_OjIp17RUhLi_jg_PQYYkrje';
 
   // Next.js Backend API Endpoint
-  static const String backendBaseUrl = 'http://192.168.10.171:3000';
+  static const String backendBaseUrl = 'https://micky-mobile-e-commerce-application.vercel.app';
+  static const String apiBaseUrl = '$backendBaseUrl/api';
 }
