@@ -34,9 +34,12 @@ const ORDER_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   payment_confirmed: { label: "Payment Confirmed", color: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-200" },
   confirmed: { label: "Order Confirmed", color: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-200" },
   processing: { label: "Processing & Inspection", color: "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-200" },
-  ready_for_dispatch: { label: "Ready for Dispatch / Pickup", color: "bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-200" },
-  shipped: { label: "Out for Delivery / Shipped", color: "bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200" },
+  ready_for_dispatch: { label: "Ready for Dispatch", color: "bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-200" },
+  ready_for_pickup: { label: "Ready for In-Store Pickup", color: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-200" },
+  shipped: { label: "Shipped & In Transit", color: "bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200" },
+  out_for_delivery: { label: "Out for Delivery", color: "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-950 dark:text-sky-200" },
   delivered: { label: "Delivered & Received", color: "bg-green-100 text-green-800 border-green-300 dark:bg-green-950 dark:text-green-200" },
+  picked_up: { label: "Picked Up & Received", color: "bg-green-100 text-green-800 border-green-300 dark:bg-green-950 dark:text-green-200" },
   cancelled: { label: "Cancelled", color: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-200" },
   refunded: { label: "Refunded", color: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200" },
 }
@@ -166,11 +169,11 @@ export function AdminOrdersManager() {
       case "paid":
         return isPaid && (status === "payment_confirmed" || status === "confirmed")
       case "processing":
-        return status === "processing" || status === "ready_for_dispatch"
+        return status === "processing" || status === "ready_for_dispatch" || status === "ready_for_pickup"
       case "shipped":
-        return status === "shipped"
+        return status === "shipped" || status === "out_for_delivery"
       case "delivered":
-        return status === "delivered"
+        return status === "delivered" || status === "picked_up"
       default:
         return true
     }
@@ -410,19 +413,43 @@ export function AdminOrdersManager() {
                         </Button>
                       )}
 
-                      {/* 3. Processing -> Ready for Dispatch */}
+                      {/* 3. Processing -> Ready for Dispatch or Pickup */}
                       {currentStatus === "processing" && (
+                        order.pickup_method === "pickup" ? (
+                          <Button
+                            size="sm"
+                            disabled={isActioning}
+                            onClick={() => handleStatusTransition(order, "ready_for_pickup", { notes: "Device packed and staged at Bole Alemnesh Ground Floor pickup counter" })}
+                            className="bg-teal-600 hover:bg-teal-700 text-white h-7 text-xs"
+                          >
+                            Mark Ready for Pickup
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={isActioning}
+                            onClick={() => handleStatusTransition(order, "ready_for_dispatch", { notes: "Device packed and staged for courier dispatch" })}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white h-7 text-xs"
+                          >
+                            Mark Ready for Dispatch
+                          </Button>
+                        )
+                      )}
+
+                      {/* 4. Ready for Pickup -> Picked Up */}
+                      {currentStatus === "ready_for_pickup" && (
                         <Button
                           size="sm"
                           disabled={isActioning}
-                          onClick={() => handleStatusTransition(order, "ready_for_dispatch", { notes: "Device packed and staged at Bole Alemnesh pickup desk" })}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white h-7 text-xs"
+                          onClick={() => handleStatusTransition(order, "picked_up", { notes: "Customer verified and collected device in person at Bole Alemnesh Plaza" })}
+                          className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs"
                         >
-                          Mark Ready for Dispatch
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                          Confirm In-Store Pickup
                         </Button>
                       )}
 
-                      {/* 4. Ready -> Shipped / Out for Delivery */}
+                      {/* 4. Ready for Dispatch -> Shipped */}
                       {currentStatus === "ready_for_dispatch" && (
                         <Button
                           size="sm"
@@ -430,19 +457,32 @@ export function AdminOrdersManager() {
                           onClick={() => {
                             setActiveActionOrder(order)
                             setTargetStatus("shipped")
-                            setCarrierInput(order.pickup_method === "delivery" ? "Micky Express Courier Rider" : "In-Store Counter Desk")
+                            setCarrierInput("Micky Express Courier Rider")
                             setTrackingNumberInput(`DISP-${Math.floor(100000 + Math.random() * 900000)}`)
-                            setActionNotes("Handed to courier for delivery")
+                            setActionNotes("Handed to courier rider for delivery")
                           }}
                           className="bg-cyan-600 hover:bg-cyan-700 text-white h-7 text-xs"
                         >
                           <Truck className="w-3.5 h-3.5 mr-1" />
-                          Dispatch / Out for Delivery
+                          Hand to Courier / Ship
                         </Button>
                       )}
 
-                      {/* 5. Shipped -> Delivered */}
+                      {/* 5. Shipped -> Out for Delivery */}
                       {currentStatus === "shipped" && (
+                        <Button
+                          size="sm"
+                          disabled={isActioning}
+                          onClick={() => handleStatusTransition(order, "out_for_delivery", { notes: "Rider is en route to customer delivery location" })}
+                          className="bg-sky-600 hover:bg-sky-700 text-white h-7 text-xs"
+                        >
+                          <Truck className="w-3.5 h-3.5 mr-1" />
+                          Mark Out for Delivery
+                        </Button>
+                      )}
+
+                      {/* 6. Out for Delivery or Shipped -> Delivered */}
+                      {(currentStatus === "out_for_delivery" || currentStatus === "shipped") && (
                         <Button
                           size="sm"
                           disabled={isActioning}
@@ -454,10 +494,10 @@ export function AdminOrdersManager() {
                         </Button>
                       )}
 
-                      {/* Delivered badge */}
-                      {currentStatus === "delivered" && (
-                        <span className="text-green-700 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-4 h-4" /> Order Complete & Fulfilled
+                      {/* Completed badges */}
+                      {(currentStatus === "delivered" || currentStatus === "picked_up") && (
+                        <span className="text-green-700 font-bold flex items-center gap-1 text-xs">
+                          <CheckCircle2 className="w-4 h-4" /> {currentStatus === "picked_up" ? "Order Picked Up" : "Order Delivered"}
                         </span>
                       )}
 

@@ -23,7 +23,7 @@ begin
   ) then
     alter table public.orders 
       add constraint orders_order_status_check 
-      check (order_status in ('placed', 'payment_confirmed', 'confirmed', 'processing', 'ready_for_dispatch', 'shipped', 'delivered', 'cancelled', 'refunded'));
+      check (order_status in ('placed', 'payment_confirmed', 'confirmed', 'processing', 'ready_for_dispatch', 'ready_for_pickup', 'shipped', 'out_for_delivery', 'delivered', 'picked_up', 'cancelled', 'refunded'));
   end if;
 end;
 $$;

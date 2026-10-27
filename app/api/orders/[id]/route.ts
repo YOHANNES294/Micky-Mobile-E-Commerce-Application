@@ -105,8 +105,11 @@ const VALID_STATUSES = [
   "confirmed",
   "processing",
   "ready_for_dispatch",
+  "ready_for_pickup",
   "shipped",
+  "out_for_delivery",
   "delivered",
+  "picked_up",
   "cancelled",
   "refunded",
 ] as const
@@ -116,9 +119,12 @@ const STATUS_TITLES: Record<string, string> = {
   payment_confirmed: "Payment Confirmed",
   confirmed: "Order Confirmed",
   processing: "Processing & Quality Inspection",
-  ready_for_dispatch: "Ready for Dispatch / Store Pickup",
-  shipped: "Out for Delivery / Dispatched",
+  ready_for_dispatch: "Ready for Dispatch",
+  ready_for_pickup: "Ready for In-Store Pickup",
+  shipped: "Shipped / In Transit",
+  out_for_delivery: "Out for Delivery",
   delivered: "Delivered & Received",
+  picked_up: "Picked Up & Received",
   cancelled: "Order Cancelled",
   refunded: "Payment Refunded",
 }
@@ -190,8 +196,11 @@ export async function PATCH(
       "confirmed",
       "processing",
       "ready_for_dispatch",
+      "ready_for_pickup",
       "shipped",
+      "out_for_delivery",
       "delivered",
+      "picked_up",
     ].includes(order_status)
 
     if (requiresVerifiedPayment && !isPaid) {
@@ -233,9 +242,15 @@ export async function PATCH(
     if (delivery_notes !== undefined) updatePayload.delivery_notes = delivery_notes
 
     // Also sync legacy fulfillment_status for backward compatibility
-    if (order_status === "delivered") {
+    if (order_status === "delivered" || order_status === "picked_up") {
       updatePayload.fulfillment_status = "fulfilled"
-    } else if (order_status === "processing" || order_status === "ready_for_dispatch" || order_status === "shipped") {
+    } else if (
+      order_status === "processing" ||
+      order_status === "ready_for_dispatch" ||
+      order_status === "ready_for_pickup" ||
+      order_status === "shipped" ||
+      order_status === "out_for_delivery"
+    ) {
       updatePayload.fulfillment_status = "processing"
     } else if (order_status === "cancelled") {
       updatePayload.fulfillment_status = "cancelled"

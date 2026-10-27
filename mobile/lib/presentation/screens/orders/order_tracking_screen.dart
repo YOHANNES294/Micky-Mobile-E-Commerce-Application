@@ -291,18 +291,27 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       children: [
                         // Status Header Card
                         _buildStatusHeaderCard(txRef, currentStatus),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
+
+                        // Purchased Products Card
+                        _buildPurchasedProductsCard(),
+                        const SizedBox(height: 16),
 
                         // Visual Tracking Timeline
                         _buildVisualTimeline(isCancelled),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
 
                         // Shipment & Carrier Details Card (when available)
                         _buildCarrierDetailsCard(),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
 
                         // Customer Support & Direct Contact Card
                         _buildSupportContactCard(),
+
+                        if (_isEligibleForCancellation(currentStatus)) ...[
+                          const SizedBox(height: 16),
+                          _buildCancelOrderButton(),
+                        ],
                       ],
                     ),
                   ),
@@ -415,6 +424,132 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     );
   }
 
+  Widget _buildPurchasedProductsCard() {
+    final items = (_order?['items'] is List && (_order!['items'] as List).isNotEmpty)
+        ? List<Map<String, dynamic>>.from(_order!['items'])
+        : <Map<String, dynamic>>[];
+
+    if (items.isEmpty && _order?['phone'] is Map) {
+      final p = _order!['phone'] as Map<String, dynamic>;
+      items.add({
+        'brand': p['brand'] ?? 'Samsung',
+        'model': p['model'] ?? 'Galaxy A15',
+        'storage': p['storage'] ?? '',
+        'ram': p['ram'] ?? '',
+        'quantity': 1,
+        'price': double.tryParse(p['price']?.toString() ?? '0') ?? double.tryParse(_order?['amount']?.toString() ?? '0') ?? 0,
+        'image': p['image'],
+      });
+    }
+
+    if (items.isEmpty) {
+      final amount = _order?['amount']?.toString() ?? '0';
+      items.add({
+        'brand': 'Micky Mobile',
+        'model': 'Selected Device',
+        'quantity': 1,
+        'price': double.tryParse(amount) ?? 0,
+      });
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Purchased Products',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textDark),
+              ),
+              Text(
+                '${items.length} ${items.length == 1 ? "item" : "items"}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+          const Divider(height: 18),
+          ...items.map((it) {
+            final brand = it['brand']?.toString() ?? '';
+            final model = it['model']?.toString() ?? 'Mobile Device';
+            final storage = it['storage']?.toString() ?? '';
+            final ram = it['ram']?.toString() ?? '';
+            final qty = it['quantity'] ?? 1;
+            final price = double.tryParse(it['price']?.toString() ?? '0') ?? 0;
+            final image = it['image']?.toString();
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: image != null && image.isNotEmpty
+                        ? Image.network(
+                            image,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(Icons.phone_android, color: Colors.grey),
+                          )
+                        : const Icon(Icons.phone_android, color: Colors.grey),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$brand $model',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textDark),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (storage.isNotEmpty || ram.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            [if (storage.isNotEmpty) storage, if (ram.isNotEmpty) '$ram RAM'].join(' • '),
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${NumberFormat('#,###').format(price)} ETB',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.coral),
+                      ),
+                      Text(
+                        'Qty: $qty',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVisualTimeline(bool isCancelled) {
     if (isCancelled) {
       return Container(
@@ -442,6 +577,50 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       );
     }
 
+    final isPickup = (_order?['pickup_method'] ?? 'pickup').toString().toLowerCase() == 'pickup';
+
+    // AliExpress defined milestone progression
+    final List<Map<String, String>> lifecycleStages = isPickup
+        ? [
+            {'key': 'placed', 'title': 'Order Placed', 'desc': 'Order created and registered in store'},
+            {'key': 'payment_confirmed', 'title': 'Payment Confirmed', 'desc': 'Chapa transaction verified securely'},
+            {'key': 'confirmed', 'title': 'Order Confirmed', 'desc': 'Accepted and queued by store manager'},
+            {'key': 'processing', 'title': 'Processing & Quality Inspection', 'desc': 'Device IMEI verified & inspected'},
+            {'key': 'ready_for_pickup', 'title': 'Ready for In-Store Pickup', 'desc': 'Staged at Bole Alemnesh Ground Floor counter'},
+            {'key': 'picked_up', 'title': 'Picked Up & Completed', 'desc': 'Device handed over to customer'},
+          ]
+        : [
+            {'key': 'placed', 'title': 'Order Placed', 'desc': 'Order created and registered in store'},
+            {'key': 'payment_confirmed', 'title': 'Payment Confirmed', 'desc': 'Chapa transaction verified securely'},
+            {'key': 'confirmed', 'title': 'Order Confirmed', 'desc': 'Accepted and queued by store manager'},
+            {'key': 'processing', 'title': 'Processing & Quality Inspection', 'desc': 'Device IMEI verified & inspected'},
+            {'key': 'ready_for_dispatch', 'title': 'Ready for Dispatch', 'desc': 'Packaged and staged for courier'},
+            {'key': 'shipped', 'title': 'Shipped & In Transit', 'desc': 'Courier rider has collected device'},
+            {'key': 'out_for_delivery', 'title': 'Out for Delivery', 'desc': 'Rider is on final delivery route'},
+            {'key': 'delivered', 'title': 'Delivered & Completed', 'desc': 'Device delivered and verified'},
+          ];
+
+    final currentStatus = (_order?['order_status'] ?? 'placed').toString().toLowerCase();
+
+    // Map history entries by status key
+    final Map<String, Map<String, dynamic>> historyMap = {};
+    for (final h in _history) {
+      final s = (h['status'] ?? '').toString().toLowerCase();
+      if (s.isNotEmpty) historyMap[s] = h;
+    }
+
+    // Determine current index in lifecycle
+    int currentIndex = lifecycleStages.indexWhere((st) => st['key'] == currentStatus);
+    if (currentIndex == -1) {
+      if (currentStatus == 'delivered' || currentStatus == 'picked_up') {
+        currentIndex = lifecycleStages.length - 1;
+      } else if (currentStatus == 'shipped' || currentStatus == 'out_for_delivery') {
+        currentIndex = lifecycleStages.indexWhere((st) => st['key'] == 'shipped');
+      } else {
+        currentIndex = 1;
+      }
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -456,7 +635,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Live Milestones Timeline',
+                'Live Tracking Timeline',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textDark),
               ),
               Container(
@@ -466,111 +645,223 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${_history.length} Completed',
+                  'Stage ${currentIndex + 1} of ${lifecycleStages.length}',
                   style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.coral),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
 
-          // Display only milestones that have actually occurred
-          if (_history.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Awaiting initial milestone...', style: TextStyle(color: Colors.grey, fontSize: 12)),
-            )
-          else
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _history.length,
-              itemBuilder: (context, index) {
-                final milestone = _history[index];
-                final isLast = index == _history.length - 1;
-                final dateStr = milestone['timestamp']?.toString();
-                DateTime? dt = dateStr != null ? DateTime.tryParse(dateStr)?.toLocal() : null;
-                final formattedDate = dt != null ? DateFormat('MMM dd, hh:mm a').format(dt) : '';
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: lifecycleStages.length,
+            itemBuilder: (context, index) {
+              final stage = lifecycleStages[index];
+              final stageKey = stage['key']!;
+              final isLast = index == lifecycleStages.length - 1;
 
-                return IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Step Circle & Vertical Connector Line
-                      Column(
-                        children: [
-                          Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: isLast ? AppTheme.coral : const Color(0xFF16A34A),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (isLast ? AppTheme.coral : const Color(0xFF16A34A)).withOpacity(0.3),
-                                  blurRadius: 6,
-                                ),
-                              ],
+              final isCompleted = index < currentIndex;
+              final isCurrent = index == currentIndex;
+              final isUpcoming = index > currentIndex;
+
+              final matchedMilestone = historyMap[stageKey];
+              final dateStr = matchedMilestone?['timestamp']?.toString();
+              DateTime? dt = dateStr != null ? DateTime.tryParse(dateStr)?.toLocal() : null;
+              final formattedDate = dt != null ? DateFormat('MMM dd, hh:mm a').format(dt) : '';
+              final note = matchedMilestone?['description']?.toString() ?? stage['desc']!;
+
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Stepper Node & Line
+                    Column(
+                      children: [
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: isCompleted
+                                ? const Color(0xFF16A34A)
+                                : isCurrent
+                                    ? AppTheme.coral
+                                    : Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isCompleted
+                                  ? const Color(0xFF16A34A)
+                                  : isCurrent
+                                      ? AppTheme.coral
+                                      : Colors.grey.shade300,
+                              width: 2,
                             ),
-                            child: Icon(
-                              isLast ? Icons.radio_button_checked : Icons.check,
-                              color: Colors.white,
-                              size: 12,
-                            ),
+                            boxShadow: isCurrent
+                                ? [
+                                    BoxShadow(
+                                      color: AppTheme.coral.withOpacity(0.35),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : null,
                           ),
-                          if (!isLast)
-                            Expanded(
-                              child: Container(
-                                width: 2,
-                                color: const Color(0xFF16A34A).withOpacity(0.4),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(width: 14),
-
-                      // Milestone Content
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    milestone['title']?.toString() ?? _formatStatusTitle(milestone['status']),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: isLast ? AppTheme.coral : AppTheme.textDark,
-                                    ),
-                                  ),
-                                  if (formattedDate.isNotEmpty)
-                                    Text(
-                                      formattedDate,
-                                      style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontFamily: 'monospace'),
-                                    ),
-                                ],
-                              ),
-                              if (milestone['description'] != null && milestone['description'].toString().isNotEmpty) ...[
-                                const SizedBox(height: 3),
-                                Text(
-                                  milestone['description'].toString(),
-                                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.3),
-                                ),
-                              ],
-                            ],
+                          child: Icon(
+                            isCompleted
+                                ? Icons.check
+                                : isCurrent
+                                    ? Icons.radio_button_checked
+                                    : Icons.circle,
+                            color: isCompleted || isCurrent ? Colors.white : Colors.grey.shade300,
+                            size: isCompleted ? 13 : isCurrent ? 13 : 8,
                           ),
                         ),
+                        if (!isLast)
+                          Expanded(
+                            child: Container(
+                              width: 2,
+                              color: isCompleted
+                                  ? const Color(0xFF16A34A).withOpacity(0.5)
+                                  : Colors.grey.shade200,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 14),
+
+                    // Milestone Info
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 22),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      stage['title']!,
+                                      style: TextStyle(
+                                        fontWeight: isCurrent || isCompleted ? FontWeight.bold : FontWeight.w500,
+                                        fontSize: 13,
+                                        color: isCurrent
+                                            ? AppTheme.coral
+                                            : isCompleted
+                                                ? AppTheme.textDark
+                                                : Colors.grey.shade500,
+                                      ),
+                                    ),
+                                    if (isCurrent) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.coral,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Text(
+                                          'CURRENT',
+                                          style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (formattedDate.isNotEmpty)
+                                  Text(
+                                    formattedDate,
+                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontFamily: 'monospace'),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              isUpcoming ? 'Upcoming stage' : note,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isUpcoming ? Colors.grey.shade400 : Colors.grey.shade600,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isEligibleForCancellation(String status) {
+    final s = status.toLowerCase();
+    return s == 'placed' || s == 'payment_confirmed' || s == 'confirmed';
+  }
+
+  Widget _buildCancelOrderButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.cancel_outlined, color: Color(0xFFE11D48), size: 18),
+        label: const Text('Cancel Order', style: TextStyle(color: Color(0xFFE11D48), fontWeight: FontWeight.bold)),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFFFDA4AF)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+        onPressed: _showCancellationDialog,
+      ),
+    );
+  }
+
+  void _showCancellationDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Order?'),
+        content: const Text(
+          'Are you sure you want to cancel this order? If payment was completed, store staff will initiate a refund.',
+          style: TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Keep Order'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                final id = _order?['id'];
+                if (id != null) {
+                  await Supabase.instance.client.from('orders').update({
+                    'order_status': 'cancelled',
+                    'fulfillment_status': 'cancelled',
+                  }).eq('id', id);
+                  _loadOrder();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Order cancelled successfully.'),
+                      backgroundColor: Color(0xFFE11D48),
+                    ),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to cancel order: $e')),
                 );
-              },
-            ),
+              }
+            },
+            child: const Text('Confirm Cancel', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
