@@ -46,13 +46,14 @@ export default function ForgotPasswordPage() {
 
     const handleVerifyOtp = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (otp.length !== 6) return
+        const cleanOtp = otp.replace(/[\s-]+/g, "")
+        if (cleanOtp.length < 6) return
 
         setIsLoading(true)
 
         const { error } = await supabase.auth.verifyOtp({
             email,
-            token: otp,
+            token: cleanOtp,
             type: "recovery",
         })
 
@@ -153,32 +154,25 @@ export default function ForgotPasswordPage() {
                             </div>
                             <CardTitle className="text-2xl font-bold text-gray-900">Check your Email</CardTitle>
                             <CardDescription>
-                                We've sent a 6-digit verification code to <span className="font-medium text-gray-900">{email}</span>.
+                                We've sent a verification code to <span className="font-medium text-gray-900">{email}</span>.
                             </CardDescription>
                         </CardHeader>
 
                         <CardContent className="space-y-6 flex flex-col items-center">
-                            <InputOTP
-                                maxLength={6}
+                            <Input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="Enter code"
+                                className="text-center tracking-[0.25em] text-xl font-bold font-mono h-12 max-w-xs border-gold-300 focus:border-gold-500"
                                 value={otp}
-                                onChange={setOtp}
+                                onChange={(e) => setOtp(e.target.value.replace(/\s+/g, ""))}
                                 disabled={isLoading}
-                            >
-                                <InputOTPGroup>
-                                    <InputOTPSlot index={0} />
-                                    <InputOTPSlot index={1} />
-                                    <InputOTPSlot index={2} />
-                                </InputOTPGroup>
-                                <InputOTPSeparator />
-                                <InputOTPGroup>
-                                    <InputOTPSlot index={3} />
-                                    <InputOTPSlot index={4} />
-                                    <InputOTPSlot index={5} />
-                                </InputOTPGroup>
-                            </InputOTP>
+                                maxLength={10}
+                                required
+                            />
 
                             <p className="text-xs text-muted-foreground text-center">
-                                Use the code sent to your email to verify your identity.
+                                Enter the verification code sent to your email to verify your identity.
                             </p>
                         </CardContent>
 
@@ -186,7 +180,7 @@ export default function ForgotPasswordPage() {
                             <Button
                                 type="submit"
                                 className="w-full bg-gold-500 hover:bg-gold-600 text-gray-900"
-                                disabled={isLoading || otp.length !== 6}
+                                disabled={isLoading || otp.replace(/\s+/g, "").length < 6}
                             >
                                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                                 Verify Code

@@ -201,10 +201,13 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserProfile?>> {
     required String otp,
     required String newPassword,
   }) async {
-    // 1. Verify the 6-digit recovery OTP code
+    final cleanEmail = email.trim();
+    final cleanOtp = otp.replaceAll(RegExp(r'[\s\-]+'), '').trim();
+
+    // 1. Verify the recovery OTP code
     final res = await Supabase.instance.client.auth.verifyOTP(
-      email: email.trim(),
-      token: otp.trim(),
+      email: cleanEmail,
+      token: cleanOtp,
       type: OtpType.recovery,
     );
 

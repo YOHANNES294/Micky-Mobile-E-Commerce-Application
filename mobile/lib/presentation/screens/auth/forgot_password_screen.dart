@@ -74,7 +74,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('otp_expired') || errStr.contains('expired') || errStr.contains('invalid')) {
+            _errorMessage = 'This verification code is expired or invalid. If you requested multiple codes, please use the code from the most recent email, or tap "Resend Code" below.';
+          } else {
+            final match = RegExp(r'message:\s*([^,\)]+)').firstMatch(e.toString());
+            _errorMessage = match != null ? match.group(1)!.trim() : e.toString().replaceAll('Exception: ', '').trim();
+          }
         });
       }
     }
@@ -82,12 +88,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   Future<void> _handleVerifyAndResetPassword() async {
     final email = _emailController.text.trim();
-    final code = _codeController.text.trim();
+    final code = _codeController.text.replaceAll(RegExp(r'[\s\-]+'), '').trim();
     final newPassword = _newPasswordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
     if (code.isEmpty || code.length < 6) {
-      setState(() => _errorMessage = 'Please enter the 6-digit verification code from your email.');
+      setState(() => _errorMessage = 'Please enter the verification code sent to your email.');
       return;
     }
 
@@ -132,7 +138,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('otp_expired') || errStr.contains('expired') || errStr.contains('invalid')) {
+            _errorMessage = 'This verification code is expired or invalid. If you requested multiple codes, please use the code from the most recent email, or tap "Resend Code" below.';
+          } else {
+            final match = RegExp(r'message:\s*([^,\)]+)').firstMatch(e.toString());
+            _errorMessage = match != null ? match.group(1)!.trim() : e.toString().replaceAll('Exception: ', '').trim();
+          }
         });
       }
     }
@@ -182,7 +194,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
             Text(
               _isCodeSent
-                  ? 'We sent a 6-digit recovery code to ${_emailController.text.trim()}. Enter it below to set your new password.'
+                  ? 'We sent a verification code to ${_emailController.text.trim()}. Enter it below to set your new password.'
                   : 'Enter your registered email address and we will send you a verification code to reset your password.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -270,16 +282,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                     ),
                   ] else ...[
-                    // Step 2 Fields: 6-digit Code
-                    const Text('6-Digit Verification Code', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    // Step 2 Fields: Code
+                    const Text('Verification Code', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _codeController,
                       keyboardType: TextInputType.number,
-                      maxLength: 6,
+                      maxLength: 10,
                       style: const TextStyle(letterSpacing: 4, fontWeight: FontWeight.bold, fontSize: 16),
                       decoration: InputDecoration(
-                        hintText: '123456',
+                        hintText: 'Enter code from email',
                         counterText: '',
                         prefixIcon: const Icon(Icons.pin_outlined, size: 20),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
