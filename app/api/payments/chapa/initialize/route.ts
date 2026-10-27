@@ -5,10 +5,26 @@ import { initializeOrderPayment } from "@/lib/chapa/payment-service"
 import { ChapaError } from "@/lib/chapa/client"
 
 const initializeSchema = z.object({
-  phoneId: z.string().min(1, "Phone device ID is required"),
+  phoneId: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        phoneId: z.string(),
+        quantity: z.number().int().positive().default(1),
+        model: z.string().optional(),
+        brand: z.string().optional(),
+        storage: z.string().optional(),
+        price: z.number().optional(),
+        image: z.string().optional(),
+      })
+    )
+    .optional(),
   customerName: z.string().min(2, "Customer name must be at least 2 characters"),
   customerPhone: z.string().min(9, "Valid phone number is required"),
   customerEmail: z.string().email("Valid email address is required"),
+  pickupMethod: z.enum(["pickup", "delivery"]).optional().default("pickup"),
+  deliveryAddress: z.string().optional(),
+  deliveryNotes: z.string().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -44,16 +60,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { phoneId, customerName, customerPhone, customerEmail } = validation.data
+    const { phoneId, items, customerName, customerPhone, customerEmail, pickupMethod, deliveryAddress, deliveryNotes } = validation.data
     const originUrl = request.nextUrl.origin
 
     // 3. Initialize payment through service
     const result = await initializeOrderPayment({
       userId: user.id,
       phoneId,
+      items,
       customerName,
       customerPhone,
       customerEmail,
+      pickupMethod,
+      deliveryAddress,
+      deliveryNotes,
       originUrl,
     })
 

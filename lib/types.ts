@@ -52,8 +52,39 @@ export interface Message {
 }
 
 export type PaymentMethod = "telebirr" | "cbe" | "chapa" | "other"
-export type PaymentStatus = "pending" | "completed" | "failed" | "cancelled"
+export type PaymentStatus = "pending" | "completed" | "failed" | "cancelled" | "refunded"
 export type FulfillmentStatus = "unfulfilled" | "processing" | "fulfilled" | "cancelled"
+
+export type OrderStatus =
+  | "placed"
+  | "payment_confirmed"
+  | "confirmed"
+  | "processing"
+  | "ready_for_dispatch"
+  | "shipped"
+  | "delivered"
+  | "cancelled"
+  | "refunded"
+
+export interface OrderItem {
+  phone_id: string
+  model: string
+  brand: string
+  storage?: string
+  ram?: string
+  quantity: number
+  price: number
+  image?: string
+}
+
+export interface OrderStatusHistoryItem {
+  status: OrderStatus
+  title: string
+  description?: string
+  notes?: string
+  timestamp: string
+  updated_by?: string
+}
 
 export interface Order {
   id: string
@@ -63,11 +94,20 @@ export interface Order {
   currency?: string
   payment_method: PaymentMethod
   payment_status: PaymentStatus
+  order_status?: OrderStatus
   fulfillment_status?: FulfillmentStatus
   transaction_ref?: string
   customer_name?: string
   customer_phone?: string
   customer_email?: string
+  items?: OrderItem[]
+  pickup_method?: "pickup" | "delivery"
+  delivery_address?: string
+  shipping_carrier?: string
+  tracking_number?: string
+  estimated_delivery?: string
+  delivery_notes?: string
+  status_history?: OrderStatusHistoryItem[]
   created_at: string
   updated_at: string
   phone?: Phone

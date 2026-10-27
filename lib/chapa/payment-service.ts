@@ -10,10 +10,22 @@ import { sendOrderConfirmationEmail, sendPaymentVerifiedEmail } from "@/lib/emai
 
 export interface InitializePaymentParams {
   userId: string
-  phoneId: string
+  phoneId?: string
+  items?: Array<{
+    phoneId: string
+    quantity: number
+    model?: string
+    brand?: string
+    storage?: string
+    price?: number
+    image?: string
+  }>
   customerName: string
   customerPhone: string
   customerEmail: string
+  pickupMethod?: "pickup" | "delivery"
+  deliveryAddress?: string
+  deliveryNotes?: string
   originUrl?: string
 }
 
@@ -59,11 +71,8 @@ async function getSystemDbClient() {
 export async function initializeOrderPayment(
   params: InitializePaymentParams
 ): Promise<InitializePaymentResult> {
-  const { userId, phoneId, customerName, customerPhone, customerEmail, originUrl } = params
+  const { userId, phoneId, items, customerName, customerPhone, customerEmail, pickupMethod, deliveryAddress, deliveryNotes, originUrl } = params
 
-  if (!phoneId) {
-    throw new ChapaError("Missing phone ID", 400)
-  }
   if (!customerEmail || !customerEmail.includes("@")) {
     throw new ChapaError("A valid customer email is required", 400)
   }
@@ -73,34 +82,108 @@ export async function initializeOrderPayment(
 
   const db = await getSystemDbClient()
 
-  // 1. Authoritative Phone price lookup from DB (prevents client price tampering)
-  const { data: phone, error: phoneError } = await db
-    .from("phones")
-    .select("*")
-    .eq("id", phoneId)
-    .single()
+  let effectivePhoneId = phoneId || (items && items.length > 0 ? items[0].phoneId : undefined)
+  let orderItems: Array<any> = []
+  let totalAmount = 0
+  let primaryPhone: any = null
 
-  if (phoneError || !phone) {
-    throw new ChapaError("The requested phone was not found in inventory", 404)
-  }
+  if (items && items.length > 0) {
+    // 1. Authoritative price lookup for each item in the cart from DB
+    const phoneIds = Array.from(new Set(items.map((it) => it.phoneId)))
+    const { data: dbPhones, error: phonesError } = await db
+      .from("phones")
+      .select("*")
+      .in("id", phoneIds)
 
-  const price = parsePrice(phone.price)
-  if (price <= 0) {
-    throw new ChapaError("Invalid price for the selected device", 400)
+    if (phonesError || !dbPhones || dbPhones.length === 0) {
+      throw new ChapaError("Products in cart could not be verified in inventory", 404)
+    }
+
+    const phoneMap = new Map(dbPhones.map((p: any) => [p.id, p]))
+
+    for (const it of items) {
+      const dbPhone = phoneMap.get(it.phoneId)
+      if (!dbPhone) {
+        throw new ChapaError(`Product ID ${it.phoneId} not found in inventory`, 404)
+      }
+      const itemPrice = parsePrice(dbPhone.price)
+      const qty = Math.max(1, it.quantity || 1)
+      totalAmount += itemPrice * qty
+      orderItems.push({
+        phone_id: dbPhone.id,
+        model: dbPhone.model,
+        brand: dbPhone.brand,
+        storage: dbPhone.storage,
+        ram: dbPhone.ram,
+        quantity: qty,
+        price: itemPrice,
+        image: dbPhone.image,
+      })
+    }
+
+    effectivePhoneId = orderItems[0].phone_id
+    primaryPhone = phoneMap.get(effectivePhoneId)
+  } else if (effectivePhoneId) {
+    // Single phone lookup from DB
+    const { data: phone, error: phoneError } = await db
+      .from("phones")
+      .select("*")
+      .eq("id", effectivePhoneId)
+      .single()
+
+    if (phoneError || !phone) {
+      throw new ChapaError("The requested phone was not found in inventory", 404)
+    }
+
+    const price = parsePrice(phone.price)
+    if (price <= 0) {
+      throw new ChapaError("Invalid price for the selected device", 400)
+    }
+
+    totalAmount = price
+    primaryPhone = phone
+    orderItems = [
+      {
+        phone_id: phone.id,
+        model: phone.model,
+        brand: phone.brand,
+        storage: phone.storage,
+        ram: phone.ram,
+        quantity: 1,
+        price,
+        image: phone.image,
+      },
+    ]
+  } else {
+    throw new ChapaError("No product or items specified for checkout", 400)
   }
 
   // 2. Generate unique transaction reference
   const txRef = generateTxRef()
 
-  // 3. Create Order record in database with pending status
+  // 3. Create initial status milestone (Order Placed)
+  const initialMilestone = {
+    status: "placed",
+    title: "Order Placed",
+    description: "Order created in Micky Mobile store and awaiting payment",
+    timestamp: new Date().toISOString(),
+  }
+
+  // 4. Create Order record in database with pending status
   const orderData = {
     client_id: userId,
-    phone_id: phoneId,
-    amount: price,
+    phone_id: effectivePhoneId,
+    amount: totalAmount,
     currency: "ETB",
     payment_method: "chapa",
     payment_status: "pending",
+    order_status: "placed",
     fulfillment_status: "unfulfilled",
+    pickup_method: pickupMethod || "pickup",
+    delivery_address: deliveryAddress?.trim() || null,
+    delivery_notes: deliveryNotes?.trim() || null,
+    items: orderItems,
+    status_history: [initialMilestone],
     transaction_ref: txRef,
     customer_name: customerName.trim(),
     customer_phone: customerPhone?.trim() || "",
@@ -120,13 +203,26 @@ export async function initializeOrderPayment(
 
   const orderId = createdOrder.id
 
-  // 4. Create Payment record in database with pending status
+  // Record initial audit in order_status_history
+  try {
+    await db.from("order_status_history").insert({
+      order_id: orderId,
+      status: "placed",
+      title: "Order Placed",
+      notes: `Order created with reference ${txRef}`,
+      updated_by: userId,
+    })
+  } catch {
+    // Non-blocking if table migration is pending
+  }
+
+  // 5. Create Payment record in database with pending status
   const paymentData = {
     order_id: orderId,
     customer_id: userId,
     provider: "chapa",
     transaction_ref: txRef,
-    amount: price,
+    amount: totalAmount,
     currency: "ETB",
     status: "pending",
   }
@@ -137,7 +233,6 @@ export async function initializeOrderPayment(
 
   if (paymentError) {
     console.warn("[PaymentService] Notice: could not record into payments table:", paymentError.message)
-    // Note: If payments table was not yet created, order already holds transaction_ref and payment_status
   }
 
   // 5. Build URLs for Chapa
@@ -172,8 +267,12 @@ export async function initializeOrderPayment(
   const firstName = nameParts[0] || "Customer"
   const lastName = nameParts.slice(1).join(" ") || "Customer"
 
+  const phoneDescription = primaryPhone
+    ? `Purchase of ${primaryPhone.brand} ${primaryPhone.model}`
+    : "Purchase from Micky Mobile Ethiopia"
+
   const chapaPayload: ChapaInitializeRequest = {
-    amount: price.toString(),
+    amount: totalAmount.toString(),
     currency: "ETB",
     email: customerEmail.trim(),
     first_name: firstName,
@@ -184,11 +283,11 @@ export async function initializeOrderPayment(
     return_url: returnUrl,
     customization: {
       title: "Micky Mobile Ethiopia",
-      description: `Purchase of ${phone.brand} ${phone.model} (${phone.storage})`,
+      description: phoneDescription,
     },
     meta: {
       order_id: orderId,
-      phone_id: phoneId,
+      phone_id: effectivePhoneId,
       customer_id: userId,
     },
   }
@@ -200,7 +299,7 @@ export async function initializeOrderPayment(
   createAndDispatchNotification({
     userId,
     title: `Order Placed #${txRef.slice(0, 8)}`,
-    message: `Your order for ${phone.brand} ${phone.model} (${price.toLocaleString()} ETB) has been initiated.`,
+    message: `Your order for ${phoneDescription} (${totalAmount.toLocaleString()} ETB) has been initiated.`,
     category: "orders",
     targetType: "order",
     targetId: orderId,
@@ -208,7 +307,7 @@ export async function initializeOrderPayment(
 
   if (customerEmail) {
     sendOrderConfirmationEmail(
-      { ...orderData, id: orderId, phone } as any,
+      { ...orderData, id: orderId, phone: primaryPhone } as any,
       customerEmail,
       customerName
     ).catch(() => {})
@@ -219,7 +318,7 @@ export async function initializeOrderPayment(
     checkoutUrl: chapaResponse.data!.checkout_url,
     txRef,
     orderId,
-    amount: price,
+    amount: totalAmount,
     currency: "ETB",
   }
 }
@@ -416,13 +515,105 @@ async function updateOrderAndPaymentStatus(
   const orderPaymentStatus =
     status === "successful" ? "completed" : status === "cancelled" ? "cancelled" : status === "pending" ? "pending" : "failed"
 
-  // 1. Update Order
+  const orderStatus =
+    status === "successful" ? "payment_confirmed" : status === "cancelled" ? "cancelled" : undefined
+
+  // 1. Fetch current order to preserve history and perform idempotent updates
+  const { data: currentOrder } = await db
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single()
+
+  const currentHistory: Array<any> = Array.isArray(currentOrder?.status_history)
+    ? currentOrder.status_history
+    : []
+
+  const hasPaymentConfirmed = currentHistory.some((h) => h.status === "payment_confirmed")
+
+  let updatedHistory = currentHistory
+  if (status === "successful" && !hasPaymentConfirmed) {
+    updatedHistory = [
+      ...currentHistory,
+      {
+        status: "payment_confirmed",
+        title: "Payment Confirmed",
+        description: `Payment verified securely with Chapa gateway (Ref: ${txRef})`,
+        timestamp: new Date().toISOString(),
+      },
+    ]
+
+    // Idempotent inventory deduction
+    try {
+      const itemsToDeduct = currentOrder?.items && currentOrder.items.length > 0
+        ? currentOrder.items
+        : currentOrder?.phone_id
+          ? [{ phone_id: currentOrder.phone_id, quantity: 1 }]
+          : []
+
+      for (const item of itemsToDeduct) {
+        if (!item.phone_id) continue
+        const qty = item.quantity || 1
+        const { data: sale } = await db
+          .from("sales")
+          .select("*")
+          .eq("phone_id", item.phone_id)
+          .maybeSingle()
+
+        if (sale) {
+          const newInv = Math.max(0, (sale.inventory_quantity || 0) - qty)
+          const newSold = (sale.sold_quantity || 0) + qty
+          await db
+            .from("sales")
+            .update({
+              inventory_quantity: newInv,
+              sold_quantity: newSold,
+            })
+            .eq("id", sale.id)
+        }
+      }
+    } catch (stockErr) {
+      console.warn("[PaymentService] Inventory deduction notice:", stockErr)
+    }
+
+    // Insert into order_status_history
+    try {
+      await db.from("order_status_history").insert({
+        order_id: orderId,
+        status: "payment_confirmed",
+        title: "Payment Confirmed",
+        notes: `Verified Chapa Transaction: ${txRef}`,
+      })
+    } catch {
+      // Non-blocking
+    }
+  } else if (status === "cancelled" && !currentHistory.some((h) => h.status === "cancelled")) {
+    updatedHistory = [
+      ...currentHistory,
+      {
+        status: "cancelled",
+        title: "Order Cancelled",
+        description: "Payment cancelled by user or provider",
+        timestamp: new Date().toISOString(),
+      },
+    ]
+  }
+
+  const updatePayload: Record<string, any> = {
+    payment_status: orderPaymentStatus,
+    updated_at: new Date().toISOString(),
+  }
+  if (orderStatus) {
+    updatePayload.order_status = orderStatus
+  }
+  if (updatedHistory.length > 0) {
+    updatePayload.status_history = updatedHistory
+  }
+
+  // 2. Update Order
   const { data: updatedOrder } = await db
     .from("orders")
-    .update({
-      payment_status: orderPaymentStatus,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", orderId)
     .select("*")
     .single()
@@ -438,7 +629,7 @@ async function updateOrderAndPaymentStatus(
     }
   }
 
-  // 2. Update Payment
+  // 3. Update Payment
   const { data: updatedPayment } = await db
     .from("payments")
     .update({

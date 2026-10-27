@@ -68,6 +68,54 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     try {
       final txRef = 'MCK-${DateTime.now().millisecondsSinceEpoch}';
 
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      final userId = currentUser?.id ?? '00000000-0000-0000-0000-000000000000';
+
+      final itemsMap = selectedItems.map((item) => {
+        'phone_id': item.phone.id,
+        'model': item.phone.model,
+        'brand': item.phone.brand,
+        'storage': item.phone.storage,
+        'ram': item.phone.ram,
+        'quantity': item.quantity,
+        'price': item.phone.numericPrice,
+        'image': item.phone.image,
+      }).toList();
+
+      final initialMilestone = {
+        'status': 'placed',
+        'title': 'Order Placed',
+        'description': 'Order created in Micky Mobile store and awaiting payment',
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      String orderDbId = txRef;
+      try {
+        final orderInsert = await Supabase.instance.client.from('orders').insert({
+          'client_id': userId,
+          'phone_id': selectedItems.first.phone.id,
+          'amount': selectedTotal,
+          'currency': 'ETB',
+          'payment_method': 'chapa',
+          'payment_status': 'pending',
+          'order_status': 'placed',
+          'fulfillment_status': 'unfulfilled',
+          'transaction_ref': txRef,
+          'customer_name': name,
+          'customer_phone': phone,
+          'customer_email': email,
+          'pickup_method': 'pickup',
+          'items': itemsMap,
+          'status_history': [initialMilestone],
+        }).select('id').maybeSingle();
+
+        if (orderInsert != null && orderInsert['id'] != null) {
+          orderDbId = orderInsert['id'].toString();
+        }
+      } catch (e) {
+        // Non-blocking: Backend verification reconciles or creates if needed
+      }
+
       final res = await ChapaService.initializePayment(
         orderId: txRef,
         amount: selectedTotal,
@@ -79,7 +127,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       final checkoutUrl = res['checkout_url'] as String?;
       if (checkoutUrl != null) {
         final pendingReceipt = OrderReceipt(
-          orderId: txRef,
+          orderId: orderDbId,
           txRef: txRef,
           customerName: name,
           customerPhone: phone,

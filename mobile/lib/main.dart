@@ -11,6 +11,8 @@ import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/auth/register_screen.dart';
 import 'presentation/screens/profile/profile_screen.dart';
 import 'presentation/screens/orders/orders_screen.dart';
+import 'presentation/screens/orders/order_tracking_screen.dart';
+import 'presentation/screens/orders/order_confirmation_screen.dart';
 import 'presentation/screens/notifications/notification_center_screen.dart';
 
 void main() async {
@@ -59,6 +61,14 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final status = state.uri.queryParameters['status'];
         return OrdersScreen(initialFilter: status);
+      },
+    ),
+    GoRoute(
+      path: '/order-tracking',
+      builder: (context, state) {
+        final orderId = state.uri.queryParameters['id'] ?? '';
+        final txRef = state.uri.queryParameters['ref'];
+        return OrderTrackingScreen(orderId: orderId, txRef: txRef);
       },
     ),
     GoRoute(
