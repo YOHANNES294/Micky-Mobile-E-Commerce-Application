@@ -77,7 +77,7 @@ class _ChapaPaymentWebviewScreenState extends State<ChapaPaymentWebviewScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => OrderConfirmationScreen(
-            orderId: widget.pendingReceipt.orderId,
+            orderId: result['order']?['id']?.toString() ?? widget.pendingReceipt.orderId,
             txRef: widget.txRef,
             totalAmount: widget.pendingReceipt.amount,
             customerName: widget.pendingReceipt.customerName,

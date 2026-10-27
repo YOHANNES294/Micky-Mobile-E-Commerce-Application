@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -76,6 +78,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   }
 
   Future<void> _loadOrder() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       var query = Supabase.instance.client.from('orders').select('*');
       if (widget.orderId.isNotEmpty && widget.orderId.contains('-') && widget.orderId.length > 20) {
@@ -88,7 +95,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
       final data = await query.maybeSingle();
 
-      if (data == null && widget.txRef != null) {
+      if (data != null && mounted) {
+        _processOrderData(data);
+        return;
+      }
+
+      if (widget.txRef != null) {
         final fallback = await Supabase.instance.client
             .from('orders')
             .select('*')
@@ -100,15 +112,32 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         }
       }
 
+      // Fallback: Authoritative backend endpoint which uses service role
+      final ref = (widget.txRef != null && widget.txRef!.isNotEmpty)
+          ? widget.txRef!
+          : widget.orderId;
+
+      if (ref.isNotEmpty) {
+        try {
+          final backendUrl = Uri.parse(
+            '${AppConstants.apiBaseUrl}/payments/chapa/verify?tx_ref=${Uri.encodeComponent(ref)}',
+          );
+          final resp = await http.get(backendUrl).timeout(const Duration(seconds: 8));
+          if (resp.statusCode == 200) {
+            final json = jsonDecode(resp.body);
+            if (json['order'] != null && mounted) {
+              _processOrderData(Map<String, dynamic>.from(json['order']));
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
       if (mounted) {
-        if (data != null) {
-          _processOrderData(data);
-        } else {
-          setState(() {
-            _isLoading = false;
-            _errorMessage = 'Order not found';
-          });
-        }
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Order not found';
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -123,23 +152,56 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   void _processOrderData(Map<String, dynamic> data) {
     List<Map<String, dynamic>> history = [];
 
-    if (data['status_history'] is List) {
+    // Derive current status if not explicitly present in DB
+    String currentStatus = (data['order_status'] ?? '').toString().toLowerCase();
+    final paymentStatus = (data['payment_status'] ?? '').toString().toLowerCase();
+    final fulfillmentStatus = (data['fulfillment_status'] ?? '').toString().toLowerCase();
+
+    if (currentStatus.isEmpty) {
+      if (fulfillmentStatus == 'fulfilled') {
+        currentStatus = 'delivered';
+      } else if (fulfillmentStatus == 'processing') {
+        currentStatus = 'processing';
+      } else if (paymentStatus == 'completed' || paymentStatus == 'successful') {
+        currentStatus = 'payment_confirmed';
+      } else {
+        currentStatus = 'placed';
+      }
+      data['order_status'] = currentStatus;
+    }
+
+    if (data['status_history'] is List && (data['status_history'] as List).isNotEmpty) {
       history = List<Map<String, dynamic>>.from(data['status_history']);
     } else {
       final createdAt = data['created_at']?.toString() ?? DateTime.now().toIso8601String();
       history.add({
         'status': 'placed',
         'title': 'Order Placed',
-        'description': 'Order recorded in system',
+        'description': 'Order recorded in Micky Mobile store',
         'timestamp': createdAt,
       });
 
-      final paymentStatus = (data['payment_status'] ?? '').toString().toLowerCase();
       if (paymentStatus == 'completed' || paymentStatus == 'successful') {
         history.add({
           'status': 'payment_confirmed',
           'title': 'Payment Confirmed',
           'description': 'Payment verified securely with Chapa gateway',
+          'timestamp': data['updated_at'] ?? createdAt,
+        });
+      }
+
+      if (fulfillmentStatus == 'processing') {
+        history.add({
+          'status': 'processing',
+          'title': 'Processing & Quality Inspection',
+          'description': 'Order is being prepared and inspected',
+          'timestamp': data['updated_at'] ?? createdAt,
+        });
+      } else if (fulfillmentStatus == 'fulfilled') {
+        history.add({
+          'status': 'delivered',
+          'title': 'Delivered & Received',
+          'description': 'Device successfully handed over / delivered',
           'timestamp': data['updated_at'] ?? createdAt,
         });
       }

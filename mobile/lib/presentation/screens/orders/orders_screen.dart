@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:micky_mobile/core/constants/app_constants.dart';
 import 'package:micky_mobile/core/theme/app_theme.dart';
 import 'package:micky_mobile/data/models/order_receipt.dart';
 import 'package:micky_mobile/logic/auth_provider.dart';
@@ -72,8 +75,17 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> with SingleTickerPr
   }
 
   Future<void> _loadOrders() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final authUser = Supabase.instance.client.auth.currentUser;
     final user = ref.read(authProvider).value;
-    if (user == null) {
+    final effectiveUserId = user?.id ?? authUser?.id;
+    final effectiveEmail = user?.email ?? authUser?.email;
+
+    if (effectiveUserId == null && effectiveEmail == null) {
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -84,15 +96,81 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> with SingleTickerPr
     }
 
     try {
-      final data = await Supabase.instance.client
-          .from('orders')
-          .select('*')
-          .eq('client_id', user.id)
-          .order('created_at', ascending: false);
+      List<Map<String, dynamic>> orderList = [];
+
+      // 1. Primary Supabase query by client_id
+      if (effectiveUserId != null) {
+        try {
+          final data = await Supabase.instance.client
+              .from('orders')
+              .select('*')
+              .eq('client_id', effectiveUserId)
+              .order('created_at', ascending: false);
+          orderList = List<Map<String, dynamic>>.from(data);
+        } catch (_) {}
+      }
+
+      // 2. Fallback query by email if client_id yielded nothing
+      if (orderList.isEmpty && effectiveEmail != null) {
+        try {
+          final data = await Supabase.instance.client
+              .from('orders')
+              .select('*')
+              .eq('customer_email', effectiveEmail)
+              .order('created_at', ascending: false);
+          if (data.isNotEmpty) {
+            orderList = List<Map<String, dynamic>>.from(data);
+          }
+        } catch (_) {}
+      }
+
+      // 3. Fallback to authoritative backend endpoint
+      if (orderList.isEmpty) {
+        try {
+          final session = Supabase.instance.client.auth.currentSession;
+          final headers = <String, String>{};
+          if (session?.accessToken != null) {
+            headers['Authorization'] = 'Bearer ${session!.accessToken}';
+          }
+          final resp = await http
+              .get(
+                Uri.parse('${AppConstants.apiBaseUrl}/orders'),
+                headers: headers,
+              )
+              .timeout(const Duration(seconds: 8));
+
+          if (resp.statusCode == 200) {
+            final json = jsonDecode(resp.body);
+            if (json is List) {
+              orderList = List<Map<String, dynamic>>.from(json);
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 4. Normalize and derive status for each order
+      for (final o in orderList) {
+        final paymentStatus = (o['payment_status'] ?? '').toString().toLowerCase();
+        final fulfillmentStatus = (o['fulfillment_status'] ?? '').toString().toLowerCase();
+        var currentStatus = (o['order_status'] ?? '').toString().toLowerCase();
+
+        if (currentStatus.isEmpty) {
+          if (fulfillmentStatus == 'fulfilled') {
+            currentStatus = 'delivered';
+          } else if (fulfillmentStatus == 'processing') {
+            currentStatus = 'processing';
+          } else if (paymentStatus == 'completed' || paymentStatus == 'successful') {
+            currentStatus = 'payment_confirmed';
+          } else {
+            currentStatus = 'placed';
+          }
+          o['order_status'] = currentStatus;
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _orders = List<Map<String, dynamic>>.from(data);
+          _orders = orderList;
           _isLoading = false;
           _error = null;
         });

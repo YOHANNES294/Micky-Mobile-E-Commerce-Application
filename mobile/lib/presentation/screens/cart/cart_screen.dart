@@ -70,7 +70,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
       final txRef = 'MCK-${DateTime.now().millisecondsSinceEpoch}';
 
       final currentUser = Supabase.instance.client.auth.currentUser;
-      final userId = currentUser?.id ?? '00000000-0000-0000-0000-000000000000';
+      final userId = currentUser?.id;
 
       final itemsMap = selectedItems.map((item) => {
         'phone_id': item.phone.id,
@@ -92,26 +92,39 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
       String orderDbId = txRef;
       try {
-        final orderInsert = await Supabase.instance.client.from('orders').insert({
-          'client_id': userId,
+        final orderData = {
+          if (userId != null) 'client_id': userId,
           'phone_id': selectedItems.first.phone.id,
           'amount': selectedTotal,
           'currency': 'ETB',
           'payment_method': 'chapa',
           'payment_status': 'pending',
-          'order_status': 'placed',
           'fulfillment_status': 'unfulfilled',
           'transaction_ref': txRef,
           'customer_name': name,
           'customer_phone': phone,
           'customer_email': email,
-          'pickup_method': 'pickup',
-          'items': itemsMap,
-          'status_history': [initialMilestone],
-        }).select('id').maybeSingle();
+        };
 
-        if (orderInsert != null && orderInsert['id'] != null) {
-          orderDbId = orderInsert['id'].toString();
+        try {
+          // Try full schema if migration 012 is present
+          final fullInsert = await Supabase.instance.client.from('orders').insert({
+            ...orderData,
+            'order_status': 'placed',
+            'pickup_method': 'pickup',
+            'items': itemsMap,
+            'status_history': [initialMilestone],
+          }).select('id').maybeSingle();
+
+          if (fullInsert != null && fullInsert['id'] != null) {
+            orderDbId = fullInsert['id'].toString();
+          }
+        } catch (_) {
+          // Fallback to baseline schema
+          final baselineInsert = await Supabase.instance.client.from('orders').insert(orderData).select('id').maybeSingle();
+          if (baselineInsert != null && baselineInsert['id'] != null) {
+            orderDbId = baselineInsert['id'].toString();
+          }
         }
       } catch (e) {
         // Non-blocking: Backend verification reconciles or creates if needed
