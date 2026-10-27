@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:micky_mobile/core/theme/app_theme.dart';
 import 'package:micky_mobile/data/models/order_receipt.dart';
 import 'package:micky_mobile/data/services/chapa_service.dart';
@@ -78,8 +79,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
         'storage': item.phone.storage,
         'ram': item.phone.ram,
         'quantity': item.quantity,
-        'price': item.phone.numericPrice,
-        'image': item.phone.image,
+        'price': item.phone.price,
+        'image': item.phone.imageUrl,
       }).toList();
 
       final initialMilestone = {

@@ -9,6 +9,7 @@ import 'presentation/screens/cart/cart_screen.dart';
 import 'presentation/screens/chat/live_chat_screen.dart';
 import 'presentation/screens/auth/login_screen.dart';
 import 'presentation/screens/auth/register_screen.dart';
+import 'presentation/screens/auth/forgot_password_screen.dart';
 import 'presentation/screens/profile/profile_screen.dart';
 import 'presentation/screens/orders/orders_screen.dart';
 import 'presentation/screens/orders/order_tracking_screen.dart';
@@ -51,6 +52,13 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/register',
       builder: (context, state) => const RegisterScreen(),
+    ),
+    GoRoute(
+      path: '/forgot-password',
+      builder: (context, state) {
+        final email = state.uri.queryParameters['email'];
+        return ForgotPasswordScreen(initialEmail: email);
+      },
     ),
     GoRoute(
       path: '/profile',

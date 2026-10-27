@@ -190,7 +190,36 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserProfile?>> {
   }
 
   Future<void> resetPassword(String email) async {
-    await Supabase.instance.client.auth.resetPasswordForEmail(email.trim());
+    await Supabase.instance.client.auth.resetPasswordForEmail(
+      email.trim(),
+      redirectTo: 'https://micky-mobile-e-commerce-application.vercel.app/auth/reset-password',
+    );
+  }
+
+  Future<void> verifyRecoveryOtpAndSetNewPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    // 1. Verify the 6-digit recovery OTP code
+    final res = await Supabase.instance.client.auth.verifyOTP(
+      email: email.trim(),
+      token: otp.trim(),
+      type: OtpType.recovery,
+    );
+
+    if (res.user == null) {
+      throw Exception('Invalid or expired verification code.');
+    }
+
+    // 2. Set the new password
+    final updateRes = await Supabase.instance.client.auth.updateUser(
+      UserAttributes(password: newPassword),
+    );
+
+    if (updateRes.user != null) {
+      state = AsyncValue.data(UserProfile.fromUser(updateRes.user!));
+    }
   }
 
   Future<void> signOut() async {

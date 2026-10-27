@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:micky_mobile/core/constants/app_constants.dart';
 import 'package:micky_mobile/core/theme/app_theme.dart';
 import 'package:micky_mobile/logic/auth_provider.dart';
+import 'package:micky_mobile/presentation/screens/auth/forgot_password_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -85,66 +86,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _showForgotPasswordDialog() {
-    final resetEmailController = TextEditingController(text: _emailController.text);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your registered email address to receive password reset instructions.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: resetEmailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email Address',
-                prefixIcon: Icon(Icons.email_outlined),
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.coral),
-            onPressed: () async {
-              final email = resetEmailController.text.trim();
-              if (email.isEmpty || !email.contains('@')) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a valid email.')),
-                );
-                return;
-              }
-              Navigator.of(ctx).pop();
-              try {
-                await ref.read(authProvider.notifier).resetPassword(email);
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password reset link sent! Check your email inbox.'),
-                    backgroundColor: Color(0xFF16A34A),
-                  ),
-                );
-              } catch (err) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error: $err')),
-                );
-              }
-            },
-            child: const Text('Send Reset Link', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(initialEmail: _emailController.text.trim()),
       ),
     );
   }
