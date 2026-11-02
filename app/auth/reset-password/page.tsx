@@ -57,7 +57,7 @@ export default function ResetPasswordPage() {
 
         verifySession()
 
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: authListener } = supabase.auth.onAuthStateChange((event: any, session: any) => {
             if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || session) {
                 setHasActiveSession(true)
                 setIsCheckingSession(false)

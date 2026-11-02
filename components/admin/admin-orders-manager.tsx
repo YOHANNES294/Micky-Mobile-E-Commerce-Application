@@ -161,7 +161,7 @@ export function AdminOrdersManager() {
     if (!matchesSearch) return false
 
     const status = order.order_status || (order.payment_status === "completed" ? "payment_confirmed" : "placed")
-    const isPaid = order.payment_status === "completed" || order.payment_status === "successful"
+    const isPaid = order.payment_status === "completed" || (order.payment_status as string) === "successful"
 
     switch (activeTab) {
       case "pending":
@@ -214,7 +214,7 @@ export function AdminOrdersManager() {
           {[
             { id: "all", label: "All Orders", count: orders.length },
             { id: "pending", label: "To Pay (Pending)", count: orders.filter((o) => o.payment_status === "pending").length },
-            { id: "paid", label: "Paid / To Confirm", count: orders.filter((o) => (o.order_status === "payment_confirmed" || o.order_status === "confirmed") && (o.payment_status === "completed" || o.payment_status === "successful")).length },
+            { id: "paid", label: "Paid / To Confirm", count: orders.filter((o) => (o.order_status === "payment_confirmed" || o.order_status === "confirmed") && (o.payment_status === "completed" || (o.payment_status as string) === "successful")).length },
             { id: "processing", label: "In Prep / Ready", count: orders.filter((o) => o.order_status === "processing" || o.order_status === "ready_for_dispatch").length },
             { id: "shipped", label: "Out for Delivery", count: orders.filter((o) => o.order_status === "shipped").length },
             { id: "delivered", label: "Delivered", count: orders.filter((o) => o.order_status === "delivered").length },
@@ -254,7 +254,7 @@ export function AdminOrdersManager() {
         ) : (
           <div className="space-y-3">
             {filteredOrders.map((order) => {
-              const isPaid = order.payment_status === "completed" || order.payment_status === "successful"
+              const isPaid = order.payment_status === "completed" || (order.payment_status as string) === "successful"
               const isPending = order.payment_status === "pending"
               const currentStatus = order.order_status || (isPaid ? "payment_confirmed" : "placed")
               const statusMeta = ORDER_STATUS_LABELS[currentStatus] || { label: currentStatus, color: "bg-gray-100" }

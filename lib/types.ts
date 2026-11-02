@@ -105,6 +105,7 @@ export interface Order {
   customer_email?: string
   items?: OrderItem[]
   pickup_method?: "pickup" | "delivery"
+  delivery_method?: "pickup" | "delivery"
   delivery_address?: string
   shipping_carrier?: string
   tracking_number?: string

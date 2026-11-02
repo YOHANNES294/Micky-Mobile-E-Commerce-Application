@@ -7,18 +7,30 @@ class NotificationPermissionDialog extends StatefulWidget {
 
   const NotificationPermissionDialog({super.key, this.onEnabled});
 
+  static bool _hasCheckedOrPrompted = false;
+
+  /// Prompts the user strictly ONCE across the lifetime of using the app.
+  /// If dismissed, enabled, or prompted once, it will never interrupt again.
   static Future<void> showIfAppropriate(BuildContext context) async {
+    // If already checked or prompted in current app lifecycle, return immediately
+    if (_hasCheckedOrPrompted) return;
+    _hasCheckedOrPrompted = true;
+
     final prefs = await SharedPreferences.getInstance();
+
+    // Check if user was already prompted before or already configured
+    final hasBeenPrompted = prefs.getBool('notif_has_been_prompted') ?? false;
+    if (hasBeenPrompted) return;
+
     final dontAskAgain = prefs.getBool('notif_dont_ask_again') ?? false;
     if (dontAskAgain) return;
 
-    final lastDismissed = prefs.getInt('notif_last_dismissed_ms');
-    if (lastDismissed != null) {
-      final elapsed = DateTime.now().millisecondsSinceEpoch - lastDismissed;
-      if (elapsed < 3 * 24 * 60 * 60 * 1000) {
-        return; // Don't interrupt within 3 days
-      }
-    }
+    final isEnabled = prefs.getBool('notif_enabled') ?? false;
+    if (isEnabled) return;
+
+    // Immediately mark as prompted so that tapping outside the dialog, pressing
+    // Android back, closing the app, or any dismissal ensures it is NEVER shown again.
+    await prefs.setBool('notif_has_been_prompted', true);
 
     if (!context.mounted) return;
 
@@ -38,10 +50,9 @@ class _NotificationPermissionDialogState extends State<NotificationPermissionDia
 
   Future<void> _handleMaybeLater() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notif_has_been_prompted', true);
     if (_dontAskAgain) {
       await prefs.setBool('notif_dont_ask_again', true);
-    } else {
-      await prefs.setInt('notif_last_dismissed_ms', DateTime.now().millisecondsSinceEpoch);
     }
     if (mounted) Navigator.of(context).pop();
   }
@@ -49,6 +60,7 @@ class _NotificationPermissionDialogState extends State<NotificationPermissionDia
   Future<void> _handleEnable() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('notif_enabled', true);
+    await prefs.setBool('notif_has_been_prompted', true);
     widget.onEnabled?.call();
 
     if (mounted) {

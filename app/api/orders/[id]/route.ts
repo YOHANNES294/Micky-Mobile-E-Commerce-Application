@@ -300,6 +300,39 @@ export async function PATCH(
       console.warn("[Orders API PATCH] Notification dispatch error:", notifErr)
     }
 
+    // Dispatch AliExpress-style Gmail notification to customer
+    try {
+      let recipientEmail = currentOrder.customer_email
+      let recipientName = currentOrder.customer_name
+
+      if (!recipientEmail && currentOrder.client_id) {
+        const { data: clientProfile } = await supabase
+          .from("user_profiles")
+          .select("email, full_name")
+          .eq("id", currentOrder.client_id)
+          .maybeSingle()
+        if (clientProfile?.email) {
+          recipientEmail = clientProfile.email
+          if (!recipientName) recipientName = clientProfile.full_name
+        }
+      }
+
+      if (recipientEmail) {
+        const { sendAliExpressOrderUpdateEmail } = await import("@/lib/email/email-service")
+        sendAliExpressOrderUpdateEmail({
+          order: updatedOrder || currentOrder,
+          customerEmail: recipientEmail,
+          customerName: recipientName || "Valued Customer",
+          newStatus: order_status,
+          notes,
+          trackingCarrier: shipping_carrier || currentOrder.shipping_carrier,
+          trackingNumber: tracking_number || currentOrder.tracking_number,
+        }).catch((err) => console.warn("[Orders API PATCH] Email dispatch warning:", err))
+      }
+    } catch (emailErr) {
+      console.warn("[Orders API PATCH] AliExpress email error:", emailErr)
+    }
+
     return NextResponse.json({
       success: true,
       order: updatedOrder,
